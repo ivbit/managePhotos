@@ -1,0 +1,303 @@
+<?xml version="1.0" ?>
+<!-- Intellectual property information START
+
+Copyright (c) 2022 Ivan Bityutskiy 
+
+Permission to use, copy, modify, and distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+Intellectual property information END
+
+Description START
+
+A complex WSH script to manage photographies:
+1) Move photographies from removable media to destination folders,
+while renaming them appropriately.
+2) Rearrange last photographies (after the user deletes some of them),
+in an order photo0001.jpg, photo0002.jpg, photo0003.jpg, ...
+User have to choose the number of previous dates, then the script will
+rearrange the files only in the corresponding folders. Default is today +
+yesterday, the day before yesterday, the day before the day before yesterday.
+3) Rearrange all photographies present on local system.
+
+Description END -->
+<package>
+<job id="managePhotos">
+<script language="VBScript">
+' <![CDATA[
+' Declare variables START
+Dim strNewLine
+Dim intOkOnly, intExclamation, intInformation, intRetryCancel, intCancel, intRetry
+Dim intScriptMode, intNumDaysAgo
+
+strNewLine = vbNewLine
+intOkOnly = vbOkOnly
+intExclamation = vbExclamation
+intInformation = vbInformation
+intRetryCancel = vbRetryCancel
+intCancel = vbCancel
+intRetry = vbRetry
+
+intScriptMode = InputBox("1 - Move Photos" & strNewLine & _
+"2 - Rearrange Last Photos" & strNewLine & _
+"3 - Rearrange All Photos", "Choose Script Mode", 1)
+
+If intScriptMode = "" Then
+  ' The user clicked "Cancel"
+  Call WScript.Quit(1)
+End If
+
+On Error Resume Next
+intScriptMode = CInt(intScriptMode)
+If Err.Number <> 0 Then
+  intScriptMode = 1
+  Call Err.Clear()
+End If
+On Error Goto 0
+If intScriptMode <> 1 And intScriptMode <> 2 And intScriptMode <> 3 Then
+  intScriptMode = 1
+End If
+
+If intScriptMode = 2 Then
+  intNumDaysAgo = InputBox("Enter the amount of days ago:" & strNewLine & _
+  "0 - Today" & strNewLine & "1 - Today And Yesterday" & strNewLine & _
+  "2 - Today, Yesterday And Day before yesterday" & strNewLine & _
+  "     and so on...", "Rearrange Last Photos", 3)
+  If intNumDaysAgo = "" Then
+    ' The user clicked "Cancel"
+    Call WScript.Quit(1)
+  End If
+  On Error Resume Next
+  intNumDaysAgo = CInt(intNumDaysAgo)
+  If Err.Number <> 0 Then
+    intNumDaysAgo = 3
+    Call Err.Clear()
+  End If
+  On Error Goto 0
+  If intNumDaysAgo < 0 Or intNumDaysAgo > 11000 Then
+    intNumDaysAgo = 3
+  End If
+End If
+' ]]>
+</script>
+
+<script language="JScript">
+// <![CDATA[
+var objWshShell = WScript.CreateObject('WScript.Shell');
+var objFSO = WScript.CreateObject('Scripting.FileSystemObject');
+var strOutPath = 'C:\\photos';
+var strPath = '';
+var arrDates;
+// Declare variables END
+
+// Define functions START
+function computeDates(dateInputDate, intMillDaysAgo)
+{
+  // 1 day == 86400000 milliseconds
+  // When rearranging last photos, if millDaysAgo equals 0, theDate is today
+  var theDate = new Date(dateInputDate - 86400000 * intMillDaysAgo);
+  var fullYear = theDate.getFullYear().toString();
+  var theYear = fullYear.substring(2);
+  // First month in JScript has a 0 index, adding 1
+  var theMonth = (theDate.getMonth() + 1).toString();
+  // Forcing 2 digit output format, as 01, 09, 12
+  theMonth = '0' + theMonth;
+  theMonth = theMonth.substring(theMonth.length - 2);
+  theDay = theDate.getDate().toString();
+  theDay = '0' + theDay;
+  theDay = theDay.substring(theDay.length - 2);
+  // Format like y2022
+  var yearFolder = 'y' + fullYear;
+  // Format like p220127
+  var dateFolder = 'p' + theYear + theMonth + theDay;
+  // Returning an array with 2 values, like y2022, p220127
+  return [yearFolder, dateFolder];
+}
+
+function rearrangeFiles(strFolderFullName)
+{
+  var intFunCounter = 0;
+  var objRearrangeFolder = objFSO.GetFolder(strFolderFullName);
+  // Enumerator object works with collections of objects
+  var objRearrangeFolderEnum = new Enumerator(objRearrangeFolder.Files);
+  var objRearrangeFile;
+  var strNumPartFileName = '', strNumPartCounter = '', strFileNewName = '';
+  while (! objRearrangeFolderEnum.atEnd())
+  {
+    intFunCounter++;
+    objRearrangeFile = objFSO.GetFile(objRearrangeFolderEnum.item());
+    strNumPartFileName = objRearrangeFile.Name;
+    strNumPartFileName = strNumPartFileName.substring(5,9);
+    strNumPartCounter = '000' + intFunCounter.toString();
+    strNumPartCounter = strNumPartCounter.substring(strNumPartCounter.length -4);
+    // Checking if the numeric part of file name is equal to numeric part of counter
+    if (strNumPartCounter != strNumPartFileName)
+    {
+      strFileNewName = strFolderFullName + '\\' +
+        'photo' + strNumPartCounter + '.jpg';
+      // Renaming files
+      objRearrangeFile.Move(strFileNewName);
+    }
+    objRearrangeFolderEnum.moveNext();
+  }
+}
+
+function makeCounter(strFolderFullName)
+{
+  var intFunCounter = 0;
+  var objCountFolder = objFSO.GetFolder(strFolderFullName);
+  var objCountFolderEnum = new Enumerator(objCountFolder.Files);
+  while (! objCountFolderEnum.atEnd() )
+  {
+    intFunCounter++;
+    objCountFolderEnum.moveNext();
+  }
+  // Counting files in folder, returning the amount of files
+  return intFunCounter;
+}
+// Define functions END
+
+// BEGINNING OF SCRIPT
+switch (intScriptMode)
+{
+  case 1:
+    // Move photos
+    var strInPath = 'F:\\Images';
+    var intUsrChoice = intRetry;
+    while (! objFSO.FolderExists(strInPath))
+    {
+      intUsrChoice = objWshShell.Popup('Input path' + strNewLine +
+      strInPath + strNewLine +
+      'is unavailable!', 0, 'Manage Photos', intRetryCancel +
+      intExclamation);
+      if (intUsrChoice == intCancel)
+      {
+        WScript.Quit(1);
+      }
+    }
+    var objInFolder = objFSO.GetFolder(strInPath);
+    // objInFolder.Files is a Collection of file objects
+    var objInFilesCollectionEnum = new Enumerator(objInFolder.Files);
+    var objFile;
+    var strArranged = '', strCmdLine = '', strCounter = '';
+    // 0 - the window is hidden
+    var intCounter = 0, intWindowStyle = 0;
+    // wait for the program (exiftool) to return before doing next step
+    var boolNotCounted = true, boolWaitOnReturn = true;
+    while (! objInFilesCollectionEnum.atEnd())
+    {
+      objFile = objFSO.GetFile(objInFilesCollectionEnum.item());
+      arrDates = computeDates(objFile.DateCreated, 0);
+      // sample: arrDates[0] == y2022; arrDates[1] = p220127
+      strPath = strOutPath + '\\' + arrDates[0];
+      if (! objFSO.FolderExists(strPath))
+      {
+        objFSO.CreateFolder(strPath);
+      }
+      strPath = strPath + '\\' + arrDates[1];
+      // If the folder doesn't exist, create it, don't count files in it
+      if (! objFSO.FolderExists(strPath))
+      {
+        objFSO.CreateFolder(strPath);
+        // Creating a string containing unique folder names like p220127
+        strArranged = strArranged + arrDates[1] + ';';
+        intCounter = 0;
+        boolNotCounted = false;
+      }
+      // If folder name is not present in the strArranged string, then the
+      // folder already exists, rearrange files, then count amount of them
+      if (strArranged.indexOf(arrDates[1]) < 0)
+      {
+        rearrangeFiles(strPath);
+        strArranged = strArranged + arrDates[1] + ';';
+        boolNotCounted = true;
+      }
+      if (boolNotCounted)
+      {
+        intCounter = makeCounter(strPath);
+        boolNotCounted = false;
+      }
+      // Setting the counter to number of files in folder + 1
+      intCounter++;
+      // Getting string in 4 digit format
+      strCounter = '000' + intCounter.toString();
+      strCounter = strCounter.substring(strCounter.length - 4);
+      // Calling third party tool to clean ExIf attributes and
+      // save a modified copy of file in destination folder
+      strCmdLine = 'exiftool.exe -all:all= "' +
+        objFile.Path + '" -o "' +
+        strPath + '\\' + 'photo' + strCounter + '.jpg"';
+      objWshShell.Run(strCmdLine, intWindowStyle, boolWaitOnReturn);
+      // Deleting the original file
+      objFile.Delete();
+      objInFilesCollectionEnum.moveNext();
+    }
+    break;
+
+  case 2:
+    // Rearrange last photos
+    var todayDate = new Date();
+    var intC2Counter;
+    for (intC2Counter = 0; intC2Counter <= intNumDaysAgo; intC2Counter++)
+    {
+      arrDates = computeDates(todayDate, intC2Counter);
+      strPath = strOutPath + '\\' + arrDates[0] + '\\' + arrDates[1];
+      if (objFSO.FolderExists(strPath))
+      {
+        rearrangeFiles(strPath);
+      }
+    }
+    break;
+
+  case 3:
+    // Rearrange all photos
+    var objMainFolder = objFSO.GetFolder(strOutPath);
+    var objMainFolderEnum = new Enumerator(objMainFolder.SubFolders);
+    var objYearFolder, objYearFolderEnum, objPhotoFolder;
+    // Folder names like y2022
+    var regexpYear = /^y\d+$/;
+    // Going through the collections of folders to reach a collection
+    // of folders with names like p220127, rearrange the photographies
+    // in each folder
+    while (! objMainFolderEnum.atEnd())
+    {
+      objYearFolder = objFSO.GetFolder(objMainFolderEnum.item());
+      if (objYearFolder.Name.match(regexpYear))
+      {
+        objYearFolderEnum = new Enumerator(objYearFolder.SubFolders);
+        while (! objYearFolderEnum.atEnd())
+        {
+          objPhotoFolder = objFSO.GetFolder(objYearFolderEnum.item());
+          rearrangeFiles(objPhotoFolder.Path);
+          objYearFolderEnum.moveNext();
+        }
+        objYearFolderEnum.moveNext();
+      }
+      objMainFolderEnum.moveNext();
+    }
+    break;
+}
+
+/* Popup(Text, Number of seconds before pop-up window closes itself, Title, Button+icon)
+Buttons: 0 OK; 1 OK Cancel; 2 Abort Retry Ignore; 3 Yes No Cancel; 4 Yes No; 5 Retry Cancel
+Icons: 16 Stop; 32 Question; 48 Exclamation; 64 Information
+Returns: -1 Timed out; 1 OK; 2 Cancel; 3 Abort; 4 Retry; 5 Ignore; 6 Yes; 7 No
+retVariable = objWshShell.Popup(...); */
+objWshShell.Popup('Process completed successfully!', 0, 'Manage Photos', intOkOnly + intInformation);
+objFSO = null;
+objWshShell = null;
+// END OF SCRIPT
+// ]]>
+</script>
+</job>
+</package>
+
